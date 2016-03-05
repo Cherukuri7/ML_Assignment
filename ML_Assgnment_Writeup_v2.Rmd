@@ -1,0 +1,81 @@
+# Assignment - Prediction of Excercise Method
+####Author: Suresh Cherukuri
+####March 5, 2016
+
+This assignment makes use of research data from accelerometers attached to the belt, forearm, arm, and dumbell of 6 participants  performing barbell lifts in 5 differnt ways. 
+
+Two seperate datasets were obtained from [Groupware Technologies](http://groupware.les.inf.puc-rio.br/har); training and test. The outcome that needs to be predicted is the 'classe' variable in the training set. The prediction model will be applied on 20 test cases available in the test data set to predict the method they used to perform the barbell lifts.
+
+The goal of this paper is to build and fit a machine learning algorithm with high accuracy and low error rate and predict the manner in which the participants performed the activity. 
+
+## Loading and Cleaning of Data
+The training and test data was downloaded from the links provided in the assignment and preprocessed to remove variables that pertain to either missing data ('NA's) or user descriptions.
+```{r readfile,message=FALSE,warning=FALSE,cache=TRUE}
+
+if(!exists("pml-training")){
+download.file(
+  url="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile = "pml-training.csv")}
+if(!exists("pml-testing")){
+download.file(
+  url="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")}
+
+pml_training<-read.csv("pml-training.csv",header=TRUE, na.strings = c("NA","#DIV/0!"))
+pml_testing<-read.csv("pml-testing.csv",header=TRUE, na.strings = c("NA","#DIV/0!"))
+
+# Subset both training and test datasets to keep variables that are directional (ending with x, y or z) and those with no NAs.
+NNAs<-colSums(is.na(pml_training))==0
+sub_training<-pml_training[,NNAs];sub_testing<-pml_testing[,NNAs];
+clean_training<-sub_training[,-c(1:8)]
+clean_testing<-sub_testing[,-c(1:8)]
+dim(clean_training)
+dim(clean_testing)
+```
+
+## Data Split for Model Fitting and Cross Validation
+The training data set was split so that 75% of training data is used to fit the model and 25% to validate (test) the model.
+```{r message=FALSE,warning=FALSE}
+library(caret)
+inTrain<-createDataPartition(y=clean_training$classe,p=0.75,list=FALSE)
+training<-clean_training[inTrain,]
+test<-clean_training[-inTrain,]
+dim(training);dim(test)
+```
+
+## Fit the Model
+To predict classification variables, random forests algorithm is widely used. However, it can be quite slow due to large number of branches and to reduce the run time, parallel processing is employed.
+
+trainControl() function is used to center and scale the data and to deploy cross-validation five times over.
+
+```{r message=FALSE,warning=FALSE}
+library(caret);library(parallel);library(doParallel)
+set.seed(12345)
+cores<-makeCluster(detectCores()-1)
+registerDoParallel(cores = cores)
+
+control<-trainControl(method="cv",number=5,allowParallel = T,verbose=T,preProcOptions = c("center","scale"),classProbs = T)
+system.time(
+rf_mod<-train(classe~.,data=training,method="rf",trControl=control,verbose=F))
+stopCluster(cores)
+
+```
+
+## Evaluate the Model
+The prediction algorithm was validated on test data set that was set aside from the training data set. 
+```{r message=FALSE,warning=FALSE}
+rf_mod$finalModel
+rf_predict<-predict(rf_mod,newdata=test)
+confusionMatrix(rf_predict,test$classe)
+# Look at the most important variables identified by the model
+varImp(rf_mod)
+
+
+```
+
+## Predict test data set
+Since the model results show very high accuracy of 99% and a low error rate 0.6%, alternate predictive algorithms were not generated. We will now use prediction model to predict the 20 different test cases given. These values are used to subit the predictions to Course Project Prediction Quiz. 
+
+```{r message=FALSE,warning=FALSE}
+final_prediction<-predict(rf_mod,newdata=clean_testing)
+final_prediction
+```
+
